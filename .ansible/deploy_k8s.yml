@@ -1,8 +1,6 @@
 ---
 - hosts: all
   tasks:
-    - name: add localhost
-      lineinfile: path=/etc/hosts  line="127.0.0.1    kube-master01"
     - name: change name
       raw: "echo {{hostname|quote}} > /etc/hostname"
     - name: hostname set
