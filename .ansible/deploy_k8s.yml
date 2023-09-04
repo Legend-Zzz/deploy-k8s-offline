@@ -10,22 +10,19 @@
     - name: set timezone
       timezone: name=Asia/Shanghai
 
-    - name: add master hosts
+    - name: add hosts
       lineinfile: path=/etc/hosts  line="{{hostvars[item]['ansible_default_ipv4']['address']}}    {{item}}"
-      with_items: "{{groups['master']}}"
-    - name: add node hosts
-      lineinfile: path=/etc/hosts  line="{{hostvars[item].ansible_host}}    {{item}}"
-      with_items: "{{groups['node']}}"
+      with_items: "{{groups['all']}}"
 
     - name: add kube-master hosts
       lineinfile: path=/etc/hosts  line="{{hostvars[item]['ansible_default_ipv4']['address']}}    kube-master.k8s-offline.io"
-      with_items: "{{groups['master']}}"
+      with_items: "{{groups['init']}}"
     - name: add img hosts
       lineinfile: path=/etc/hosts  line="{{hostvars[item]['ansible_default_ipv4']['address']}}    img.k8s-offline.io"
-      with_items: "{{groups['master']}}"
+      with_items: "{{groups['init']}}"
     - name: add chart hosts
       lineinfile: path=/etc/hosts  line="{{hostvars[item]['ansible_default_ipv4']['address']}}    chart.k8s-offline.io"
-      with_items: "{{groups['master']}}"
+      with_items: "{{groups['init']}}"
 
 ##########################################
     - name: disable selinux
