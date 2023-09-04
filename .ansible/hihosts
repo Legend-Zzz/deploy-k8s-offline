@@ -1,0 +1,28 @@
+###
+[all:vars]
+sudo=yes
+ignore_errors=True
+ansible_become=true
+ansible_become_user=root
+ansible_sudo_pass=test
+
+[init]
+kube-master01 ansible_host=192.168.102.60 hostname=kube-master01 ansible_connection=local ansible_ssh_user=test ansible_ssh_pass=test
+
+[masterjoin]
+#kube-master02 ansible_host=192.168.18.242 hostname=kube-master02 ansible_ssh_user=test ansible_ssh_pass=test
+#kube-master03 ansible_host=192.168.18.243 hostname=kube-master03 ansible_ssh_user=test ansible_ssh_pass=test
+
+[nodejoin]
+#node01 ansible_host=192.168.18.244 hostname=node01 ansible_ssh_user=test ansible_ssh_pass=test
+#node02 ansible_host=192.168.18.245 hostname=node02 ansible_ssh_user=test ansible_ssh_pass=test
+
+[execjoin:children]
+masterjoin
+nodejoin
+
+
+###
+#If you use centos and debian at the same time, please specify the parameter ansible_python_interpreter as follows
+#192.168.1.100 ansible_python_interpreter=/usr/bin/python2   # centos
+#192.168.1.200 ansible_python_interpreter=/usr/bin/python3   # debian

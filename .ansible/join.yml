@@ -1,0 +1,14 @@
+---
+- hosts: masterjoin
+  tasks:
+    - name: copy master-join-token.sh
+      copy: src={{ work_dir }}/master-join-token.sh dest={{ work_dir }}/master-join-token.sh mode=755 force=yes
+    - name: exec master-node-token.sh
+      shell: bash {{ work_dir }}/master-join-token.sh
+- hosts: nodejoin
+  tasks:
+    - name: copy node-join-token.sh
+      copy: src={{ work_dir }}/node-join-token.sh dest={{ work_dir }}/node-join-token.sh mode=755 force=yes
+    - name: exec node-join-token.sh
+      shell: bash {{ work_dir }}/node-join-token.sh
+

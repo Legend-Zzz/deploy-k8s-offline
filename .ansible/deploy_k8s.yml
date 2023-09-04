@@ -1,0 +1,200 @@
+---
+- hosts: all
+  tasks:
+    - name: add localhost
+      lineinfile: path=/etc/hosts  line="127.0.0.1    kube-master01"
+    - name: change name
+      raw: "echo {{hostname|quote}} > /etc/hostname"
+    - name: hostname set
+      shell: hostname {{hostname|quote}}
+    - name: set timezone
+      timezone: name=Asia/Shanghai
+
+    - name: add master hosts
+      lineinfile: path=/etc/hosts  line="{{hostvars[item]['ansible_default_ipv4']['address']}}    {{item}}"
+      with_items: "{{groups['master']}}"
+    - name: add node hosts
+      lineinfile: path=/etc/hosts  line="{{hostvars[item].ansible_host}}    {{item}}"
+      with_items: "{{groups['node']}}"
+
+    - name: add kube-master hosts
+      lineinfile: path=/etc/hosts  line="{{hostvars[item]['ansible_default_ipv4']['address']}}    kube-master.k8s-offline.io"
+      with_items: "{{groups['master']}}"
+    - name: add img hosts
+      lineinfile: path=/etc/hosts  line="{{hostvars[item]['ansible_default_ipv4']['address']}}    img.k8s-offline.io"
+      with_items: "{{groups['master']}}"
+    - name: add chart hosts
+      lineinfile: path=/etc/hosts  line="{{hostvars[item]['ansible_default_ipv4']['address']}}    chart.k8s-offline.io"
+      with_items: "{{groups['master']}}"
+
+##########################################
+    - name: disable selinux
+      selinux: state=disabled
+      when: ansible_os_family == "RedHat"
+    - name: stop selinux
+      command: setenforce 0
+      when: ansible_os_family == "RedHat"
+    - name: stop&disable firewalld
+      systemd: name=firewalld state=stopped enabled=no
+      when: ansible_os_family == "RedHat"
+    - name: fstab swap off
+      replace: path=/etc/fstab regexp='^(^(?!#).*swap.*)' replace='# \1'
+    - name: swap off
+      shell: swapoff -a
+    - name: add k8s modules
+      copy: src=k8s-modules.conf dest=/etc/modules-load.d/k8s-modules.conf
+    - name: modprobe modules
+      shell: modprobe ip_vs && modprobe br_netfilter
+    - name: sysctl ip forward
+      sysctl: name=net.ipv4.ip_forward value=1 sysctl_set=yes state=present reload=yes
+    - name: add bridge-nf-call-iptables conf
+      copy: src=k8s.conf dest=/etc/sysctl.d/k8s.conf
+    - name: sysctl max user instances
+      sysctl: name=fs.inotify.max_user_instances value=8192 sysctl_set=yes state=present reload=yes
+    - name: sysctl 
+      shell: sysctl --system
+    - name: sysctl inotify watches
+      sysctl: name=fs.inotify.max_user_watches value=99999999 sysctl_set=yes state=present reload=yes
+    - name: unlimit
+      pam_limits: domain='*' limit_type='-' limit_item=nofile value=999999
+
+##########################################################
+    - name: copy kubelet package
+      copy:
+        src: "{{ work_dir }}/package/kubelet-{{ 'debian' if 'Debian' in ansible_distribution else 'centos' }}"
+        dest: "/tmp"
+        force: yes
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+      when: ansible_os_family in ['RedHat', 'Debian']
+
+    - name: install kubelet (debian)
+      apt: deb={{item}}
+      with_fileglob:
+        - "/tmp/kubelet-debian/libnfnetlink0*.deb"
+        - "/tmp/kubelet-debian/libs*.deb"
+        - "/tmp/kubelet-debian/lib*.deb"
+        - "/tmp/kubelet-debian/ethtool*.deb"
+        - "/tmp/kubelet-debian/iptables*.deb"
+        - "/tmp/kubelet-debian/kubernetes-cni*.deb"
+        - "/tmp/kubelet-debian/socat*.deb"
+        - "/tmp/kubelet-debian/conntrack*.deb"
+        - "/tmp/kubelet-debian/*.deb"
+      when: ansible_os_family == "Debian"
+
+    - name: install kubelet (centos)
+      block:
+        - name: find kubelet rpm_files
+          find:
+            paths: "/tmp/kubelet-centos/"
+            patterns: "*.rpm"
+          register: rpm_files
+
+        - name: install kubelet
+          yum:
+            name: "{{ rpm_files.files | map(attribute='path') | list}}"
+            state: present
+          when: rpm_files.matched > 0
+      when: ansible_os_family == "RedHat"
+
+    - name: copy containerd kubeadm kubectl nerdctl helm to usr/bin
+      copy: src={{item}} dest=/usr/bin/ mode=755 force=yes
+      with_fileglob: ['{{ work_dir }}/package/bin/*']
+
+    - name: copy kubeadm  to usr/lib/systemd
+      copy: src={{ work_dir }}/package/config/kubelet.service.d dest=/usr/lib/systemd/system/ force=yes
+
+    - name: copy containerd config
+      copy: src={{ work_dir }}/package/config/containerd dest=/etc/ force=yes
+
+    - name: copy containerd service
+      copy: src={{ work_dir }}/package/config/containerd.service dest=/usr/lib/systemd/system/containerd.service force=yes
+      
+    - name: restart containerd
+      systemd: name=containerd state=restarted
+    - name: start containerd
+      systemd: name=containerd state=started enabled=yes
+    - name: start kubelet
+      systemd: name=kubelet state=started enabled=yes
+    - name: add DNS
+      lineinfile: dest=/etc/resolv.conf line='nameserver 8.8.8.8'
+
+
+#################################################
+
+- hosts: init 
+  tasks:
+     - name: registry run ?
+       shell: nerdctl -n k8s.io ps | grep "registry" | wc -l
+       register: register_result
+     - name: start registry
+       shell: nerdctl -n k8s.io load < {{ work_dir }}/package/image/registry.tar && nerdctl -n k8s.io run -d --name registry -p 5000:5000 -p 443:5000 --network host -v {{ work_dir }}/registry:/var/lib/registry registry:2.8.2
+       when: register_result.stdout == "0"
+     - name: init cluster?
+       stat: path=/etc/kubernetes/admin.conf
+       register: k8s_init
+     - name: init cluster
+       shell: kubeadm init --pod-network-cidr 10.244.0.0/16 --skip-phases addon/kube-proxy --control-plane-endpoint kube-master.k8s-offline.io:6443 --upload-certs --kubernetes-version 1.27.5 --ignore-preflight-errors=Port-10250 > {{ work_dir }}/kubeadminit.txt
+       when: not k8s_init.stat.exists
+     - name: create join token
+       shell: bash {{ work_dir }}/join.sh 
+     - name: create .kube
+       file:
+         path: "/home/{{ ansible_user }}/.kube"
+         state: directory
+         owner: "{{ ansible_user }}"
+         group: "{{ ansible_user }}"
+         mode: '0755'
+       when: ansible_user != 'root'
+     - name: create /root/.kube
+       file:
+         path: "/root/.kube"
+         state: directory
+         owner: "root"
+         group: "root"
+         mode: '0755'
+     - name: copy admin.conf to .kube/config
+       copy: src=/etc/kubernetes/admin.conf dest=/home/{{ ansible_user }}/.kube/config owner={{ ansible_user }} group={{ ansible_user }} remote_src=true mode=600 force=yes
+       when: ansible_user != 'root'
+     - name: copy admin.conf to /root/.kube/config
+       copy: src=/etc/kubernetes/admin.conf dest=/root/.kube/config owner=root group=root remote_src=true mode=600 force=yes
+     - name: sleep 30
+       pause: seconds=30
+     - name: create kube-proxy configmap
+       shell: kubectl -n kube-system get configmap kube-proxy || kubectl -n kube-system create configmap kube-proxy --from-file /etc/kubernetes/admin.conf
+     - name: install kube-router
+       shell: kubectl apply -f {{ work_dir }}/package/kubeadm-kuberouter-all-features.yaml
+     
+     - name: add rc.local (debian)
+       copy:
+         dest: /etc/rc.local
+         content: "#!/bin/sh -e\nnohup bash +x {{ work_dir }}/auto-start.sh &\nexit 0\n"
+         mode: '0755'
+       when: ansible_os_family == "Debian"
+
+     - name: add rc.local (centos)
+       lineinfile: path=/etc/rc.d/rc.local  line="bash +x {{ work_dir }}/auto-start.sh"
+       when: ansible_os_family == "RedHat"
+     - name: chmod rc.local (centos)
+       file: path=/etc/rc.d/rc.local  mode=755
+       when: ansible_os_family == "RedHat"
+
+     - name: completion kubectl 
+       lineinfile: path=/etc/profile   line="source <(kubectl completion bash)"
+     - name: completion helm 
+       lineinfile: path=/etc/profile   line="source <(helm completion bash)"
+
+
+#########################################
+- hosts: masterjoin
+  tasks:
+    - name: copy master-join-token.sh
+      copy: src={{ work_dir }}/master-join-token.sh dest={{ work_dir }}/master-join-token.sh mode=755 force=yes
+    - name: exec master-node-token.sh
+      shell: bash {{ work_dir }}/master-join-token.sh
+- hosts: nodejoin
+  tasks:
+    - name: copy node-join-token.sh
+      copy: src={{ work_dir }}/node-join-token.sh dest={{ work_dir }}/node-join-token.sh mode=755 force=yes
+    - name: exec node-join-token.sh
+      shell: bash {{ work_dir }}/node-join-token.sh
