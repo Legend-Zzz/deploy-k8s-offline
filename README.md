@@ -1,5 +1,5 @@
 # deploy-k8s-offline
-Deploy K8S cluster offline version 1.27.5 with ansible
+Deploy K8S cluster offline version 1.27.5 with ansible, certificate is valid for 200 years
 
 Based on centos7 or debian11
 ### usage
