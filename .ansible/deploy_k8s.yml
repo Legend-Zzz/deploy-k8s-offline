@@ -79,13 +79,13 @@
 
     - name: install kubelet (centos)
       block:
-        - name: find kubelet rpm_files
+        - name: find kubelet centos rpm_files
           find:
             paths: "/tmp/kubelet-centos/"
             patterns: "*.rpm"
           register: rpm_files
 
-        - name: install kubelet
+        - name: install kubelet centos
           yum:
             name: "{{ rpm_files.files | map(attribute='path') | list}}"
             state: present
@@ -129,7 +129,7 @@
        stat: path=/etc/kubernetes/admin.conf
        register: k8s_init
      - name: init cluster
-       shell: kubeadm init --pod-network-cidr 10.244.0.0/16 --skip-phases addon/kube-proxy --control-plane-endpoint kube-master.k8s-offline.io:6443 --upload-certs --kubernetes-version 1.27.5 --ignore-preflight-errors=Port-10250 > {{ work_dir }}/kubeadminit.txt
+       shell: kubeadm init --pod-network-cidr 10.244.0.0/16 --control-plane-endpoint kube-master.k8s-offline.io:6443 --upload-certs --kubernetes-version 1.27.5 --ignore-preflight-errors=Port-10250 > {{ work_dir }}/kubeadminit.txt
        when: not k8s_init.stat.exists
      - name: create join token
        shell: bash {{ work_dir }}/join.sh 
@@ -153,12 +153,10 @@
        when: ansible_user != 'root'
      - name: copy admin.conf to /root/.kube/config
        copy: src=/etc/kubernetes/admin.conf dest=/root/.kube/config owner=root group=root remote_src=true mode=600 force=yes
-     - name: sleep 30
-       pause: seconds=30
-     - name: create kube-proxy configmap
-       shell: kubectl -n kube-system get configmap kube-proxy || kubectl -n kube-system create configmap kube-proxy --from-file /etc/kubernetes/admin.conf
-     - name: install kube-router
-       shell: kubectl apply -f {{ work_dir }}/package/kubeadm-kuberouter-all-features.yaml
+     - name: sleep 15
+       pause: seconds=15
+     - name: install kube-flannel
+       shell: kubectl apply -f {{ work_dir }}/package/kube-flannel.yml
      
      - name: add rc.local (debian)
        copy:
