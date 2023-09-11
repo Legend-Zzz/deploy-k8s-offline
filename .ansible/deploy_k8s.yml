@@ -27,7 +27,13 @@
       selinux: state=disabled
       when: ansible_os_family == "RedHat"
     - name: stop selinux
-      command: setenforce 0
+      block:
+        - name: getenforce
+          command: getenforce
+          register: selinux_status
+        - name: setenforce
+          command: setenforce 0
+          when: selinux_status.stdout != "Disabled"
       when: ansible_os_family == "RedHat"
     - name: stop&disable firewalld
       systemd: name=firewalld state=stopped enabled=no
