@@ -60,44 +60,6 @@
       pam_limits: domain='*' limit_type='-' limit_item=nofile value=999999
 
 ##########################################################
-    - name: copy kubelet package
-      copy:
-        src: "{{ work_dir }}/package/kubelet-{{ 'debian' if 'Debian' in ansible_distribution else 'centos' }}"
-        dest: "/tmp"
-        force: yes
-        owner: "{{ ansible_user }}"
-        group: "{{ ansible_user }}"
-      when: ansible_os_family in ['RedHat', 'Debian']
-
-    - name: install kubelet (debian)
-      apt: deb={{item}}
-      with_fileglob:
-        - "/tmp/kubelet-debian/libnfnetlink0*.deb"
-        - "/tmp/kubelet-debian/libs*.deb"
-        - "/tmp/kubelet-debian/lib*.deb"
-        - "/tmp/kubelet-debian/ethtool*.deb"
-        - "/tmp/kubelet-debian/iptables*.deb"
-        - "/tmp/kubelet-debian/kubernetes-cni*.deb"
-        - "/tmp/kubelet-debian/socat*.deb"
-        - "/tmp/kubelet-debian/conntrack*.deb"
-        - "/tmp/kubelet-debian/*.deb"
-      when: ansible_os_family == "Debian"
-
-    - name: install kubelet (centos)
-      block:
-        - name: find kubelet centos rpm_files
-          find:
-            paths: "/tmp/kubelet-centos/"
-            patterns: "*.rpm"
-          register: rpm_files
-
-        - name: install kubelet centos
-          yum:
-            name: "{{ rpm_files.files | map(attribute='path') | list}}"
-            state: present
-          when: rpm_files.matched > 0
-      when: ansible_os_family == "RedHat"
-
     - name: copy containerd kubeadm kubectl nerdctl helm to usr/bin
       copy: src={{item}} dest=/usr/bin/ mode=755 force=yes
       with_fileglob: ['{{ work_dir }}/package/bin/*']
