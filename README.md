@@ -1,7 +1,11 @@
 # deploy-k8s-offline
 Deploy K8S cluster offline version 1.27.5 with ansible, certificate is valid for 200 years
 
-Based on debian11/12 or ubuntu20.04/22.04 or centos7
+Support: 
+- debian 11/12
+- ubuntu 20.04/22.04
+- centos 7 or stream 8/9.
+
 ### usage
 modify inventory:  .ansible/hihosts
 

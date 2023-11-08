@@ -40,11 +40,9 @@ if [ -f /etc/os-release ]; then
       if ! command -v kubelet &>/dev/null; then
         sudo dpkg -i ./package/kubelet-debian"$VERSION_ID"/*.deb
       fi
-
-      sudo sed -i 's#interpreter_python=/usr/bin/python2#interpreter_python=/usr/bin/python3#g' .ansible/ansible.cfg
       ;;
     "centos" | "rhel")
-      if [ "$VERSION_ID" != "7" ]; then
+      if [ "$VERSION_ID" != "7" ] && [ "$VERSION_ID" != "8" ] && [ "$VERSION_ID" != "9" ]; then
         echo "Unsupported version: $VERSION_ID"
         exit 1
       fi
@@ -64,6 +62,10 @@ if [ -f /etc/os-release ]; then
       fi
       if ! command -v kubelet &>/dev/null; then
         sudo yum localinstall -y ./package/kubelet-centos"$VERSION_ID"/*.rpm
+      fi
+
+      if [ "$VERSION_ID" == "7" ]
+        sudo sed -i 's#interpreter_python=/usr/bin/python3#interpreter_python=/usr/bin/python2#g' .ansible/ansible.cfg
       fi
       ;;
     "ubuntu")
@@ -89,8 +91,6 @@ if [ -f /etc/os-release ]; then
       if ! command -v kubelet &>/dev/null; then
         sudo dpkg -i ./package/kubelet-ubuntu"$VERSION_ID"/*.deb
       fi
-
-      sudo sed -i 's#interpreter_python=/usr/bin/python2#interpreter_python=/usr/bin/python3#g' .ansible/ansible.cfg
       ;;
     *)
       echo "Unsupported operating system: $ID"
